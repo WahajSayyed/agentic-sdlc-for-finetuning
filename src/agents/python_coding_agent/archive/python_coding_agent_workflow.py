@@ -10,13 +10,13 @@ from dotenv import load_dotenv
 from src.tools.read_file_structure import read_file_structure
 from src.tools.read_file import read_file
 from src.config.logging_config import logger
-from codecarbon import EmissionsTracker
+# from codecarbon import EmissionsTracker
 
-tracker = EmissionsTracker(
-    project_name="agentic_sdlc",
-    output_dir="/home/wahaj/study/product_WJ/emissions",
-    log_level="info"
-)
+# tracker = EmissionsTracker(
+#     project_name="agentic_sdlc",
+#     output_dir="/home/wahaj/study/product_WJ/emissions",
+#     log_level="info"
+# )
 
 load_dotenv()
 working_dir = os.getenv("WORKING_DIR")
@@ -267,7 +267,7 @@ Proposed Code Changes:
 """)
 ])
 
-def reviewr_node(state: AgentState):
+def reviewer_node(state: AgentState):
     logger.info("Executing Reviewer Node")
     formatted_prompt = reviewer_prompt.format_messages(
         task=state["task"],
@@ -381,7 +381,7 @@ workflow.add_node("file_structure", file_structure_node)
 workflow.add_node("planner", planner_node, retry_policy=RetryPolicy(max_attempts=3))
 workflow.add_node("reader", reader_node)
 workflow.add_node("coder", coder_node, retry_policy=RetryPolicy(max_attempts=3))
-workflow.add_node("reviewer", reviewr_node)
+workflow.add_node("reviewer", reviewer_node)
 workflow.add_node("writer", writer_node)
 workflow.add_node("static_check", static_check_node, retry_policy=RetryPolicy(max_attempts=3))
 
@@ -424,8 +424,8 @@ print(f"Graph saved to {output_file}")
 
 config = {"recursion_limit": 50}
 input_state = {"task": "Write a detailed FastAPI endpoint for CRUD ops for a llm application that can take user input in text of file format"}
-tracker.start()
+# tracker.start()
 result = graph.invoke(input_state, config=config)
 logger.info("EXECUTION COMPLETED!")
 print(result)
-tracker.stop()
+# tracker.stop()
