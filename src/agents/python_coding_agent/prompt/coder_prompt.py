@@ -107,17 +107,20 @@ and always include a reason comment.
 """),
 
 ("user", """
-## Task
-{task}
+## ## File-Specific Instructions (implement exactly this)
+{instructions}
 
-## Implementation Plan for This File
-{plan}
+## File Action
+{action}
+
+## File Path
+{path}
 
 ## Static Analysis Feedback (fix all issues listed below)
 {feedback}
 
 ## Existing File Content (for updates — preserve all unrelated logic)
-{existing_files}
+{existing_file_content}
 
 ## Additional Instructions
 - Implement only what is described in the plan for this specific file.

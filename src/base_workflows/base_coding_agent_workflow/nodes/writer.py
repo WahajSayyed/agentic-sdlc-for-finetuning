@@ -24,8 +24,10 @@ def writer_node(state: BaseFileAgentState, backup: bool = True):
     content = code_change["content"]
     action = code_change["action"]    
     if not path.startswith(work_dir):
-        logger.critical(f"skipping the file due to wrong file path: {path}")
-        return {**state, "written_files": [], "code_changes": []}
+        if path[0] == "/" :
+            logger.critical(f"skipping the file due to wrong file path: {path}")
+            return {**state, "written_files": [], "code_changes": []}
+        path = os.path.join(work_dir, path)
     
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if backup and action == "update" and os.path.exists(path):

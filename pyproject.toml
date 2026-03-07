@@ -11,6 +11,8 @@ dependencies = [
     "langchain-openai>=1.1.10",
     "langgraph>=1.0.9",
     "langgraph-prebuilt>=1.0.8",
+    "pygls>=2.0.1",
     "python-dotenv>=1.2.2",
+    "python-lsp-server>=1.14.0",
     "ruff>=0.15.4",
 ]
