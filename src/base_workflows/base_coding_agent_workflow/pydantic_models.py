@@ -6,6 +6,12 @@ class FilePlan(BaseModel):
     path: str = Field(description="This is an absolute path of file where work_dir is the parent directory.")
     action: Literal["create", "update"]
     reason: str
+    instructions: str = Field(description="""
+        Precise, self-contained implementation instructions for this specific file only.
+        The coder will see ONLY this field + the file content — not the global task.
+        Include: what to implement, key functions/classes, inputs/outputs, 
+        dependencies to import from other planned files.
+    """)
 
 class Plan(BaseModel):
     summary: str

@@ -6,6 +6,7 @@ from .nodes.reader import reader_node
 from .nodes.writer import writer_node
 from .nodes.setup import setup_node
 from .nodes.file_structure import file_structure_node
+from .nodes.file_validator import file_validator_node
 from .nodes.process_files import make_process_files_node
 from .decisions.review_decision import review_decision
 from .decisions.should_read import should_read
@@ -58,6 +59,9 @@ class BaseCodingAgent(ABC):
     # def process_files_node(self, state: BaseAgentState) -> BaseAgentState:
     #     return make_process_files_node(state)               # use generic by default
 
+    def file_validator_node(self, state: BaseAgentState) -> BaseAgentState:
+        return file_validator_node(state)      # use generic by default
+    
     def should_read(self, state: BaseAgentState) -> str:
         return should_read(state)                   # use generic by default
 
@@ -106,14 +110,16 @@ class BaseCodingAgent(ABC):
         workflow.add_node("setup", self.setup_node)
         workflow.add_node("file_structure", file_structure_node)
         workflow.add_node("planner", self.planner_node, retry_policy=RetryPolicy(max_attempts=3))
+        workflow.add_node("file_validator", self.file_validator_node)
         workflow.add_node("reader", self.reader_node)
         workflow.add_node("process_files", self.process_files_node)
 
         workflow.set_entry_point("setup")
         workflow.add_edge("setup", "file_structure")
         workflow.add_edge("file_structure", "planner")
+        workflow.add_edge("planner", "file_validator")
         workflow.add_conditional_edges(
-            "planner", self.should_read,
+            "file_validator", self.should_read,
             {"reader": "reader", "process_files": "process_files"}
         )
         workflow.add_edge("reader", "process_files")
