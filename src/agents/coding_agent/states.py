@@ -27,7 +27,7 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     working_dir: str
     git_context: GitContext | None  
-    
+
     # Planner output
     plan: Plan | None
     
@@ -44,3 +44,6 @@ class AgentState(TypedDict):
     # Strucutred Summary
     planner_summary: Plan
     executor_summary: FileChange
+
+    planner_iterations: int
+    executor_iterations: int

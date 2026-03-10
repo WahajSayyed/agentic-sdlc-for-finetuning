@@ -15,7 +15,7 @@ def setup_node(state: BaseAgentState):
     # state["work_dir"] = os.path.join(working_dir, str(state["execution_id"]))
     # state["retry_count"] = {"review" : 0, "static_check_count": 0}
     # return state
-    exec_id = str(state.get("execution_id", 4))
+    exec_id = str(state.get("execution_id", 3))
     work_dir = os.path.join(working_dir, exec_id)
     return {
     **state,

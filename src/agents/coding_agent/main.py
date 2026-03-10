@@ -11,6 +11,8 @@ async def run_agent(request: str, working_dir: str):
         result = await app.ainvoke({
             "messages": [HumanMessage(content=request)],
             "working_dir": working_dir,
+            "planner_iterations": 0,
+            "executor_iterations": 0,
             "plan": None,
             "file_changes": [],
             "review_status": "pending",
@@ -34,6 +36,7 @@ async def run_agent(request: str, working_dir: str):
 
 asyncio.run(run_agent(
     # request="Add input validation to the login function in auth/login.py",
-    request="List all functions in llm_endpoint.py",
+    # request="List all end points in llm_endpoint.py",
+    request="add suport for anthropic model. Also update logging module to only display CRITICAL logs",
     working_dir="/home/wahaj/study/agentic-sdlc/output/3"
 ))

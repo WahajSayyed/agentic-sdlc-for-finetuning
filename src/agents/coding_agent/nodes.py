@@ -1,3 +1,4 @@
+import os
 from typing_extensions import Dict
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import HumanMessage
@@ -5,11 +6,12 @@ from src.config.llm_config import llm
 from src.config.logging_config import logger
 from .tools import make_tools
 from .states import AgentState, END
-from .lsp_tools import lsp_find_definition, lsp_find_references, lsp_get_file_symbols
-from .git_tools import get_git_context, git_get_file_diff, git_get_recent_commits
+from .lsp_tools import init_lsp, make_lsp_tools
+from .git_tools import get_git_context, make_git_tools
 
 import json
 
+MAX_ITERATIONS = 3
 # ── PROMPTS (static, no working_dir yet) ──────────────────────────────
 
 PLANNER_PROMPT = """You are a senior software architect and planning agent.
@@ -83,6 +85,10 @@ def build_nodes(working_dir: str):
 
     # Tools are created here — bound to working_dir via closure
     tools = make_tools(working_dir)
+    git_tools = make_git_tools(working_dir)
+    lsp_tools = make_lsp_tools(working_dir)
+    git_get_file_diff, git_get_recent_commits, git_get_blame = git_tools
+    lsp_find_definition, lsp_find_references, lsp_get_file_symbols = lsp_tools
 
     planner_tools = [
         *tools["planner"],
@@ -138,16 +144,55 @@ Diff summary:
         }
 
     # ── PLANNER ───────────────────────────────────────────────────────
+    # Phase 1: exploration only — returns file tree
+    # Phase 2: LSP analysis — only on paths from phase 1
+
     def planner_node(state: AgentState):
         logger.info("Starting PLANNER Node")
+
+        # Force phase 1: get real file tree first, inject it into context
+        file_tree = _get_file_tree(state["working_dir"])
+
+        planner_prompt_with_context = PLANNER_PROMPT + f"""
+
+    IMPORTANT CONSTRAINTS:
+    - Working directory: {state['working_dir']}
+    - ALL file paths must be absolute and start with {state['working_dir']}
+    - Never construct or guess paths — only use paths from the file tree below
+    - When calling LSP tools, copy paths EXACTLY from the file tree
+
+    CURRENT FILE TREE (use ONLY these paths):
+    {file_tree}
+    """
         response = planner_llm.invoke([
-            {"role": "system", "content": PLANNER_PROMPT + constraints},
-            *state["messages"]   # includes git context + user request
+            {"role": "system", "content": planner_prompt_with_context},
+            *state["messages"]
         ])
-        return {"messages": [response]}
+        return {
+            "messages": [response],
+            "planner_iterations" : state.get("planner_iterations", 0) + 1 # increment    
+        }
+
+
+    def _get_file_tree(working_dir: str) -> str:
+        """Build real file tree upfront — injected into planner context."""
+        result = []
+        for root, dirs, files in os.walk(working_dir):
+            dirs[:] = [d for d in dirs if d not in
+                    ['.git', 'node_modules', '__pycache__', '.venv', 'dist']]
+            for file in files:
+                abs_path = os.path.join(root, file)
+                result.append(abs_path)  # ✅ absolute paths only
+        return "\n".join(result)
 
     def planner_should_continue(state: AgentState):
         last = state["messages"][-1]
+        iterations = state.get("planner_iterations", 0)
+
+        if iterations >= MAX_ITERATIONS:
+            logger.warning("Planner hit max iterations - forcing extract_plan")
+            return "extract_plan"
+        
         if hasattr(last, "tool_calls") and last.tool_calls:
             return "planner_tools"
         return "extract_plan"
@@ -193,13 +238,22 @@ Execute this plan now.
 
         response = executor_llm.invoke([
             {"role": "system", "content": EXECUTOR_PROMPT + constraints},
-            *state["messages"],   # ✅ keep full history (git context etc.)
-            plan_message          # ✅ append plan as latest message
+            *state["messages"],   # keep full history (git context etc.)
+            plan_message          # append plan as latest message
         ])
-        return {"messages": [response]}
+        return {
+            "messages": [response],
+            "executor_iterations": state.get("executor_iterations", 0) + 1 # increment
+            }
 
     def executor_should_continue(state: AgentState):
         last = state["messages"][-1]
+        iterations = state.get("executor_iterations", 0)
+
+        if iterations >= MAX_ITERATIONS:
+            logger.warning("Executor hit max iterations - forcing reviewer")
+            return "reviewer"
+        
         if hasattr(last, "tool_calls") and last.tool_calls:
             return "executor_tools"
         return "reviewer"

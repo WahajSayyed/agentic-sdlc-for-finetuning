@@ -59,25 +59,29 @@ def get_git_context(working_dir: str) -> dict:
 
 # ── Tools for planner/reviewer to use during their loop ───────────────
 
-@tool
-def git_get_file_diff(file_path: str, working_dir: str) -> str:
-    """Get the full diff of a specific file since last commit."""
-    diff = _run_git(["diff", "HEAD", "--", file_path], working_dir)
-    return diff or f"No changes in {file_path} since last commit"
+def make_git_tools(working_dir: str):
+    """Create git tools pre-bound to working_dir — LLM cannot override it."""
 
-@tool
-def git_get_recent_commits(working_dir: str, count: int = 5) -> str:
-    """Get the last N commit messages for context."""
-    log = _run_git(
-        ["log", f"-{count}", "--oneline", "--no-merges"],
-        working_dir
-    )
-    return log or "No commits found"
+    @tool
+    def git_get_file_diff(file_path: str) -> str:
+        """Get the full diff of a specific file since last commit."""
+        diff = _run_git(["diff", "HEAD", "--", file_path], working_dir)  # hardcoded
+        return diff or f"No changes in {file_path} since last commit"
 
-@tool
-def git_get_blame(file_path: str, working_dir: str) -> str:
-    """See who last changed each line — useful for understanding ownership."""
-    blame = _run_git(["blame", "--line-porcelain", file_path], working_dir)
-    # Trim to avoid flooding context
-    lines = blame.splitlines()[:60]
-    return "\n".join(lines)
+    @tool
+    def git_get_recent_commits(count: int = 5) -> str:
+        """Get the last N commit messages for context."""
+        log = _run_git(
+            ["log", f"-{count}", "--oneline", "--no-merges"],
+            working_dir  # hardcoded
+        )
+        return log or "No commits found"
+
+    @tool
+    def git_get_blame(file_path: str) -> str:
+        """See who last changed each line of a file."""
+        blame = _run_git(["blame", "--line-porcelain", file_path], working_dir)  # hardcoded
+        lines = blame.splitlines()[:60]
+        return "\n".join(lines)
+
+    return [git_get_file_diff, git_get_recent_commits, git_get_blame]

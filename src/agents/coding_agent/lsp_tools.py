@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from langchain_core.tools import tool
 from .lsp_client import LSPClient
+from .tools import _safe_path
 
 # Global LSP client — initialized once per session
 lsp_client: LSPClient | None = None
@@ -26,60 +27,69 @@ def _find_symbol_position(file_path: str, symbol_name: str) -> tuple[int, int] |
                 return (line_no, col)
     return None
 
-@tool
-def lsp_find_definition(symbol_name: str, file_path: str) -> str:
-    """Find where a symbol (function/class/variable) is defined."""
-    pos = _find_symbol_position(file_path, symbol_name)
-    if not pos:
-        return f"Symbol '{symbol_name}' not found in {file_path}"
+def make_lsp_tools(working_dir: str):
+    """Create LSP tools pre-bound to working_dir."""
 
-    result = lsp_client.get_definition(file_path, pos[0], pos[1])
-    locations = result.get("result", [])
+    def _resolve(path: str) -> str:
+        return _safe_path(path, working_dir)
 
-    if not locations:
-        return f"No definition found for '{symbol_name}'"
+    @tool
+    def lsp_find_definition(symbol_name: str, file_path: str) -> str:
+        """Find where a symbol (function/class/variable) is defined."""
+        safe = _resolve(file_path)
+        pos = _find_symbol_position(safe, symbol_name)
+        if not pos:
+            return f"Symbol '{symbol_name}' not found in {file_path}"
 
-    loc = locations[0] if isinstance(locations, list) else locations
-    path = _uri_to_path(loc["uri"])
-    line = loc["range"]["start"]["line"] + 1
-    return f"'{symbol_name}' defined in {path} at line {line}"
+        result = lsp_client.get_definition(safe, pos[0], pos[1])
+        locations = result.get("result", [])
+        if not locations:
+            return f"No definition found for '{symbol_name}'"
 
-@tool
-def lsp_find_references(symbol_name: str, file_path: str) -> str:
-    """Find all files and lines that use a symbol."""
-    pos = _find_symbol_position(file_path, symbol_name)
-    if not pos:
-        return f"Symbol '{symbol_name}' not found in {file_path}"
-
-    result = lsp_client.get_references(file_path, pos[0], pos[1])
-    locations = result.get("result", [])
-
-    if not locations:
-        return f"No references found for '{symbol_name}'"
-
-    refs = []
-    for loc in locations:
-        path = _uri_to_path(loc["uri"])
+        loc = locations[0] if isinstance(locations, list) else locations
+        path = loc["uri"].replace("file://", "")
         line = loc["range"]["start"]["line"] + 1
-        refs.append(f"  {path}:{line}")
+        return f"'{symbol_name}' defined in {path} at line {line}"
 
-    return f"'{symbol_name}' used in {len(refs)} places:\n" + "\n".join(refs)
+    @tool
+    def lsp_find_references(symbol_name: str, file_path: str) -> str:
+        """Find all files and lines that use a symbol."""
+        safe = _resolve(file_path)
+        pos = _find_symbol_position(safe, symbol_name)
+        if not pos:
+            return f"Symbol '{symbol_name}' not found in {file_path}"
 
-@tool
-def lsp_get_file_symbols(file_path: str) -> str:
-    """List all functions, classes, and methods defined in a file."""
-    result = lsp_client.get_symbols(file_path)
-    symbols = result.get("result", [])
+        result = lsp_client.get_references(safe, pos[0], pos[1])
+        locations = result.get("result", [])
+        if not locations:
+            return f"No references found for '{symbol_name}'"
 
-    if not symbols:
-        return f"No symbols found in {file_path}"
+        refs = []
+        for loc in locations:
+            path = loc["uri"].replace("file://", "")
+            line = loc["range"]["start"]["line"] + 1
+            refs.append(f"  {path}:{line}")
 
-    output = []
-    for sym in symbols:
-        kind_map = {1: "File", 5: "Class", 6: "Function", 12: "Variable"}
-        kind = kind_map.get(sym.get("kind", 0), "Symbol")
-        name = sym["name"]
-        line = sym["location"]["range"]["start"]["line"] + 1
-        output.append(f"  [{kind}] {name} — line {line}")
+        return f"'{symbol_name}' used in {len(refs)} places:\n" + "\n".join(refs)
 
-    return f"Symbols in {file_path}:\n" + "\n".join(output)
+    @tool
+    def lsp_get_file_symbols(file_path: str) -> str:
+        """List all functions, classes, and methods defined in a file."""
+        safe = _resolve(file_path)   # ✅ path is sanitized and resolved
+        result = lsp_client.get_symbols(safe)
+        symbols = result.get("result", [])
+
+        if not symbols:
+            return f"No symbols found in {file_path}"
+
+        output = []
+        for sym in symbols:
+            kind_map = {1: "File", 5: "Class", 6: "Function", 12: "Variable"}
+            kind = kind_map.get(sym.get("kind", 0), "Symbol")
+            name = sym["name"]
+            line = sym["location"]["range"]["start"]["line"] + 1
+            output.append(f"  [{kind}] {name} — line {line}")
+
+        return f"Symbols in {file_path}:\n" + "\n".join(output)
+
+    return [lsp_find_definition, lsp_find_references, lsp_get_file_symbols]
