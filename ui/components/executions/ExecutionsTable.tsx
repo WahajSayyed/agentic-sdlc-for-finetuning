@@ -3,6 +3,7 @@
 import { ArrowRight, AlertCircle } from 'lucide-react'
 import type { Execution } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { DownloadButton } from '@/components/executions/DownloadButton'
 import { formatDistanceToNow, formatDateTime, formatDuration } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
@@ -12,7 +13,8 @@ interface Props {
   onRowClick: (id: number) => void
 }
 
-const COLUMNS = ['ID', 'Agent', 'Task', 'Status', 'Duration', 'Started', '']
+// Added 'Download' column between Status and Arrow
+const COLUMNS = ['ID', 'Agent', 'Task', 'Status', 'Duration', 'Started', 'Download', '']
 
 export function ExecutionsTable({ executions, loading, onRowClick }: Props) {
   return (
@@ -36,11 +38,11 @@ export function ExecutionsTable({ executions, loading, onRowClick }: Props) {
             {loading ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <tr key={i} className="border-b border-border/50">
-                  {Array.from({ length: 7 }).map((_, j) => (
+                  {Array.from({ length: 8 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
                       <div
                         className="h-3 bg-muted rounded animate-pulse"
-                        style={{ width: `${[32, 64, 180, 72, 48, 80, 16][j]}px` }}
+                        style={{ width: `${[32, 64, 180, 72, 48, 80, 24, 16][j]}px` }}
                       />
                     </td>
                   ))}
@@ -48,7 +50,7 @@ export function ExecutionsTable({ executions, loading, onRowClick }: Props) {
               ))
             ) : executions.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-16 text-center">
+                <td colSpan={8} className="px-4 py-16 text-center">
                   <div className="flex flex-col items-center gap-2 text-muted-fg">
                     <AlertCircle className="w-6 h-6 opacity-40" />
                     <p>No executions match your filters</p>
@@ -59,25 +61,33 @@ export function ExecutionsTable({ executions, loading, onRowClick }: Props) {
               executions.map(ex => (
                 <tr
                   key={ex.id}
-                  onClick={() => onRowClick(ex.id)}
                   className={cn(
-                    'border-b border-border/50 cursor-pointer group',
+                    'border-b border-border/50 group',
                     'hover:bg-muted/40 transition-colors duration-100',
                     ex.status === 'running' && 'bg-accent-dim/10'
                   )}
                 >
                   {/* ID */}
-                  <td className="px-4 py-3 text-muted-fg whitespace-nowrap">
+                  <td
+                    className="px-4 py-3 text-muted-fg whitespace-nowrap cursor-pointer"
+                    onClick={() => onRowClick(ex.id)}
+                  >
                     #{ex.id}
                   </td>
 
                   {/* Agent */}
-                  <td className="px-4 py-3">
+                  <td
+                    className="px-4 py-3 cursor-pointer"
+                    onClick={() => onRowClick(ex.id)}
+                  >
                     <span className="text-accent font-medium">{ex.agent_name}</span>
                   </td>
 
                   {/* Task */}
-                  <td className="px-4 py-3 max-w-xs">
+                  <td
+                    className="px-4 py-3 max-w-xs cursor-pointer"
+                    onClick={() => onRowClick(ex.id)}
+                  >
                     <span className="text-foreground truncate block">
                       {ex.task.slice(0, 70)}{ex.task.length > 70 ? '…' : ''}
                     </span>
@@ -89,24 +99,48 @@ export function ExecutionsTable({ executions, loading, onRowClick }: Props) {
                   </td>
 
                   {/* Status */}
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td
+                    className="px-4 py-3 whitespace-nowrap cursor-pointer"
+                    onClick={() => onRowClick(ex.id)}
+                  >
                     <StatusBadge status={ex.status} />
                   </td>
 
                   {/* Duration */}
-                  <td className="px-4 py-3 text-muted-fg whitespace-nowrap">
+                  <td
+                    className="px-4 py-3 text-muted-fg whitespace-nowrap cursor-pointer"
+                    onClick={() => onRowClick(ex.id)}
+                  >
                     {formatDuration(ex.created_at, ex.completed_at)}
                   </td>
 
                   {/* Started */}
-                  <td className="px-4 py-3 text-muted-fg whitespace-nowrap">
+                  <td
+                    className="px-4 py-3 text-muted-fg whitespace-nowrap cursor-pointer"
+                    onClick={() => onRowClick(ex.id)}
+                  >
                     <span title={formatDateTime(ex.created_at)}>
                       {formatDistanceToNow(ex.created_at)}
                     </span>
                   </td>
 
-                  {/* Arrow */}
-                  <td className="px-4 py-3">
+                  {/* Download — stopPropagation prevents row click nav when clicking download */}
+                  <td
+                    className="px-4 py-3"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <DownloadButton
+                      executionId={ex.id}
+                      status={ex.status}
+                      variant="icon"
+                    />
+                  </td>
+
+                  {/* Arrow — navigate to detail */}
+                  <td
+                    className="px-4 py-3 cursor-pointer"
+                    onClick={() => onRowClick(ex.id)}
+                  >
                     <ArrowRight className="w-3.5 h-3.5 text-muted-fg opacity-0 group-hover:opacity-100 transition-opacity" />
                   </td>
                 </tr>

@@ -1,8 +1,9 @@
 'use client'
 
-import { ArrowLeft, ExternalLink } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import type { Execution } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { DownloadButton } from '@/components/executions/DownloadButton'
 import { formatDateTime } from '@/lib/time'
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 export function ExecutionHeader({ execution, onBack }: Props) {
   return (
     <div className="flex items-start justify-between gap-4">
+      {/* Left — back button + title */}
       <div className="flex items-start gap-4">
         <button
           onClick={onBack}
@@ -36,6 +38,13 @@ export function ExecutionHeader({ execution, onBack }: Props) {
           </p>
         </div>
       </div>
+
+      {/* Right — download button */}
+      <DownloadButton
+        executionId={execution.id}
+        status={execution.status}
+        variant="button"
+      />
     </div>
   )
 }

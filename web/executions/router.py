@@ -1,9 +1,11 @@
 import asyncio
+import io
+import zipfile
+import os
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 import json
-import os
 from sqlalchemy.ext.asyncio import AsyncSession
 from web.database import get_db
 from web.executions.models import ExecutionStatus
@@ -62,7 +64,62 @@ async def _stream_execution(execution_id: int):
 def _sse_event(data: dict) -> str:
     """Format a dict as an SSE message."""
     return f"data: {json.dumps(data)}\n\n"
- 
+
+
+# ---------------------------------------------------------------------------
+# Zip helper
+# ---------------------------------------------------------------------------
+
+def _zip_execution_artifacts(execution_id: int) -> io.BytesIO:
+    """
+    Walk output/{execution_id}/ and zip all files into an in-memory buffer.
+
+    CONCEPT: io.BytesIO is an in-memory file-like object - it behave exactly
+    like a file on disk but lives in RAM. We write the zip into this buffer
+    instead of creating a temp file, which means:
+        - No disk I/O for the zip itself
+        - No cleanup required (garbage collected when response is sent)
+        - Works even if the output/ directory is a Docker bind mount
+
+    Returns:
+        io.ByteIO: Buffer positioned at byte 0, ready to stream.
+
+    Raises: 
+        FileNotFoundError: If output/{execution_id}/ doestn't exist or is empty.
+    """
+    artifact_dir = os.path.join(working_dir, str(execution_id))
+
+    if not os.path.isdir(artifact_dir):
+        raise FileNotFoundError(f"No artifact directory for execution {execution_id}")
+    
+    # collect all files recursively
+    all_files = []
+    for root, _, files in os.walk(artifact_dir):
+        for filename in files:
+            all_files.append(os.path.join(root, filename))
+
+    if not all_files:
+        raise FileNotFoundError(f"No artifact found for execution {execution_id}")
+    
+    # Build the zip in memory
+    buffer = io.BytesIO()
+
+    # CONCEPT: zipfile.ZIP_DEFLATED is the standard compression algorithm.
+    # It typically reduce the file size by 60-80% for text/code files.
+    # ZIP_STORED (no_compression) would be faster but produces larger downloads.
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for file_path in all_files:
+            # arcname is the path INSIDE the zip file.
+            # os.path.relpath strips the leading output/{id}/ prefix so the zip
+            # contains clean relative paths like "src/main.py" not
+            # "/app/output/42/src/main.py"
+            arcname = os.path.relpath(file_path, artifact_dir)
+            zf.write(file_path, arcname=arcname)
+
+    # Rewind buffer to the start so StreamingResponse reads from byte 0
+    buffer.seek(0)
+    return buffer
+
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -139,6 +196,75 @@ async def stream_execution(execution_id: int):
         },
     )
 
+
+@router.get("/executions/{execution_id}/download")
+async def download_execution_artifacts(
+    execution_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Zip and stream all agent-generated artifact for a completed execution.
+
+    Wals output/{execution_id}/, zips all files in memory, and return
+    the zip as a stream download with filename execution_{id}_artifacts.zip.
+
+    CONCEPT: StreamingResponse with an io.BytesIO buffer streams the zip
+    directly from RAM to the client wihtout writing anything to disk.
+    The Content-Disposition header tells the browser to save it as a file
+    rather than trying to  display it inline.
+
+    Args:
+        execution_id (int): Primary key for the target execution.
+        db (AsyncSession): Request-scoped DB session.
+
+    Returns:
+        StreamResponse: ZIP file stream.
+
+    Raises:
+        HTTPException 404: If execution doesn't exist.
+        HTTPExecution 404: If no artifact exist yet (agent hasn't run).
+        HTTPException 404: If execution hasn't completed yet.
+    """
+    # Verify execution exist
+    execution = await crud.get_execution(db, execution_id)
+    if not execution:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Execution {execution_id} not found",
+        )
+    
+    # Only allow downloads for completed executions.
+    # Partial artifacts from running/failed execution could be inconsistent.
+    # We allow FAILED too - partial artifacrs can still be useful for debugging.
+    if execution.status == ExecutionStatus.PENDING:
+        raise HTTPException(
+            status_code=404,
+            detail="Execution is still pending - no artifacts available yet",
+        )
+    if execution.status == ExecutionStatus.RUNNING:
+            raise HTTPException(
+                status_code=404,
+                detail="Execution is still running - artifacts not ready yet",
+        )
+    
+    # Build the zip
+    try:
+        zip_buffer = _zip_execution_artifacts(execution_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    filename = f"execution_{execution_id}_artifacts.zip"
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            # Content-Disposition: attachment tells the browser to download
+            # the file rather than render it. filename= sets the default
+            # save-as name the user sees in thier download dialog.
+            "Content-Disposition": f"attachment; filename={filename}",
+        }
+    )
 
 @router.get("/executions", response_model=ExecutionListResponse)
 async def list_executions(
