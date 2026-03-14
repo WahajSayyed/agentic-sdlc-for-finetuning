@@ -58,6 +58,46 @@ export const api = {
 
     get: (id: number) =>
       request<Execution>(`/api/v1/executions/${id}`),
+
+    // ── Artifact download ──────────────────────────────────────────────────
+    // Cannot use request<T>() here because the response is binary (zip),
+    // not JSON. We use fetch() directly and trigger a browser file download
+    // via a temporary <a> element.
+    downloadArtifacts: async (id: number): Promise<void> => {
+      const res = await fetch(
+        `${BASE_URL}/api/v1/executions/${id}/download`,
+        { method: 'GET' }
+      )
+
+      if (!res.ok) {
+        const text = await res.text()
+        let message = text
+        try { message = JSON.parse(text)?.detail ?? text } catch {}
+        throw new Error(message)
+      }
+
+      // Convert response to a Blob — raw binary object in memory
+      const blob = await res.blob()
+
+      // Create a temporary blob:// URL pointing to the zip in memory
+      const url = URL.createObjectURL(blob)
+
+      // Extract filename from Content-Disposition header if present
+      const disposition = res.headers.get('Content-Disposition') ?? ''
+      const match = disposition.match(/filename=(.+)/)
+      const filename = match ? match[1] : `execution_${id}_artifacts.zip`
+
+      // Programmatically click a hidden <a> to trigger the download dialog
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+
+      // Clean up — free the blob URL from memory
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    },
   },
 
   // ── Agents ────────────────────────────────────────────────────────────────
