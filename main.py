@@ -16,6 +16,7 @@ Example:
 # Import typing constructs for type hints
 from typing import Type, Dict, Any
 
+
 # Import the Python coding agent implementation
 from src.agents.python_coding_agent.agent import PythonCodingAgent
 
